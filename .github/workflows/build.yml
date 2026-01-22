@@ -1,1 +1,78 @@
+name: Build MHz command with WDK 7.1.0
 
+on: 
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  build:
+    name: Build
+    runs-on: windows-latest
+
+    steps:
+    - name: Cache WDK
+      id: cache-wdk-installed
+      uses: actions/cache@v3
+      env:
+        cache-name: cache-wdk-7.1.0-installed
+      with:
+        path: C:\WinDDK\7600.16385.1
+        key: ${{ env.cache-name }}
+
+    - if: ${{ steps.cache-wdk-installed.outputs.cache-hit != 'true' }}
+      name: Download WDK 7.1.0.7600
+      run: (New-Object Net.WebClient).DownloadFile("https://download.microsoft.com/download/4/A/2/4A25C7D5-EFBE-4182-B6A9-AE6850409A78/GRMWDK_EN_7600_1.ISO", "${{ github.workspace }}\GRMWDK_EN_7600_1.ISO")
+
+    - if: ${{ steps.cache-wdk-installed.outputs.cache-hit != 'true' }}
+      name: Install 7zip
+      run: choco install 7zip
+
+    - if: ${{ steps.cache-wdk-installed.outputs.cache-hit != 'true' }}
+      name: Unpack ISO
+      run: 7z.exe x -y -o"${{ github.workspace }}" "${{ github.workspace }}\GRMWDK_EN_7600_1.ISO"
+
+    - if: ${{ steps.cache-wdk-installed.outputs.cache-hit != 'true' }}
+      name: Setup WDK 7.1.0.7600
+      run: .\KitSetup.exe /install ALL /ui-level EXPRESS
+      shell: cmd       
+
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        path: 'srcdir'
+
+    # Build 32-bit MHz command
+    - name: Build MHz x86
+      run: |
+        C:\WinDDK\7600.16385.1\bin\setenv.bat C:\WinDDK\7600.16385.1 fre x86 WXP
+        D:
+        cd ${{ github.workspace }}\srcdir
+        build /g /w mhz.c
+      shell: cmd
+
+    # Build 64-bit MHz command
+    - name: Build MHz x64
+      run: |
+        C:\WinDDK\7600.16385.1\bin\setenv.bat C:\WinDDK\7600.16385.1 fre x64 WIN7
+        D:
+        cd ${{ github.workspace }}\srcdir
+        build /g /w mhz.c
+      shell: cmd
+
+    # Upload x86 artifact
+    - name: Upload artifact i386
+      uses: actions/upload-artifact@v4
+      with:
+        name: mhz-i386
+        path: |
+          ${{ github.workspace }}\srcdir\objfre_wxp_x86\i386\mhz.exe
+        retention-days: 1
+
+    # Upload x64 artifact
+    - name: Upload artifact amd64
+      uses: actions/upload-artifact@v4
+      with:
+        name: mhz-amd64
+        path: |
+          ${{ github.workspace }}\srcdir\objfre_win7_amd64\amd64\mhz.exe
+        retention-days: 1
